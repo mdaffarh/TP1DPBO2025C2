@@ -2,11 +2,12 @@
 session_start();
 require_once 'Petshop.php';
 
+// inisialisasi session jika belum ada
 if (!isset($_SESSION['products'])) {
     $_SESSION['products'] = [];
 }
 
-// Ambil data produk dari session
+// ambil data produk dari session dan unserialize agar bisa digunakan sebagai objek
 $products = [];
 if (!empty($_SESSION['products'])) {
     foreach ($_SESSION['products'] as $data) {
@@ -16,46 +17,59 @@ if (!empty($_SESSION['products'])) {
     }
 }
 
-// Tambah produk
+// tambah produk baru
 if (isset($_POST['add'])) {
+    // ambil setiap data
     $id = $_POST['id'];
     $name = $_POST['name'];
     $category = $_POST['category'];
     $price = $_POST['price'];
 
-    // Upload gambar
+    // upload gambar
     $imageName = basename($_FILES['image']['name']);
     $imageTmp = $_FILES['image']['tmp_name'];
     $imagePath = "images/" . $imageName;
     move_uploaded_file($imageTmp, $imagePath);
 
+    // buat objek produk baru dan simpan dalam session
     $product = new Petshop($id, $name, $category, $price, $imageName);
-
-    // Simpan dalam session dalam bentuk serialized object
     $_SESSION['products'][] = serialize($product);
 
     header("Location: " . $_SERVER['PHP_SELF']);
     exit();
 }
 
-// Edit produk
+// edit produk
 if (isset($_POST['edit'])) {
+    // ambil setiap data
     $id = $_POST['id'];
     $name = $_POST['name'];
     $category = $_POST['category'];
     $price = $_POST['price'];
 
-    // Upload gambar
+    // upload gambar baru
     $imageName = basename($_FILES['image']['name']);
     $imageTmp = $_FILES['image']['tmp_name'];
     $imagePath = "images/" . $imageName;
     move_uploaded_file($imageTmp, $imagePath);
 
-    foreach ($_SESSION['products'] as $key => $product) {
-        // $product = unserialize($data);
+    // update data produk yang sesuai dengan ID
+    foreach ($products as $key => $product) {
         if ($product->getId() == $id) {
-            $updatedProduct = new Petshop($id, $name, $category, $price, $imageName);
-            $_SESSION['products'][$key] = serialize($updatedProduct);
+            // hapus gambar lama jika ada
+            $oldImage = "images/" . $product->getImage();
+            if (file_exists($oldImage)) {
+                unlink($oldImage);
+            }
+
+            // update produk menggunakan setter
+            $product->setName($name);
+            $product->setCategory($category);
+            $product->setPrice($price);
+            $product->setImage($imageName);
+
+            // simpan kembali dalam session
+            $_SESSION['products'][$key] = serialize($product);
         }
     }
 
@@ -63,20 +77,44 @@ if (isset($_POST['edit'])) {
     exit();
 }
 
-// Hapus produk
+// hapus produk berdasarkan ID
 if (isset($_GET['delete_id'])) {
     $deleteId = $_GET['delete_id'];
 
-    foreach ($_SESSION['products'] as $key => $data) {
-        $product = unserialize($data);
+    foreach ($products as $key => $product) {
         if ($product->getId() == $deleteId) {
+            // hapus gambar
+            $imagePath = "images/" . $product->getImage();
+            if (file_exists($imagePath)) {
+                unlink($imagePath);
+            }
+
+            // hapus produk dari session
             unset($_SESSION['products'][$key]);
+
+            // Reset indeks array agar ID tetap berurutan
+            $_SESSION['products'] = array_values($_SESSION['products']);
             break;
         }
     }
 
+    // Refresh halaman setelah menghapus
     header("Location: " . $_SERVER['PHP_SELF']);
     exit();
+}
+
+// cari produk berdasarkan nama
+$searchResults = $products;
+if (isset($_POST['search'])) {
+    $searchQuery = trim($_POST['search_query']);
+    $searchResults = [];
+
+    // gilter produk yang mengandung kata kunci pencarian
+    foreach ($products as $product) {
+        if (stripos($product->getName(), $searchQuery) !== false) {
+            $searchResults[] = $product;
+        }
+    }
 }
 ?>
 
@@ -114,6 +152,7 @@ if (isset($_GET['delete_id'])) {
 
 <body>
     <h2>Petshop Dudul Miaw-miaw</h2>
+    <!-- form tambah data -->
     <div>
         <h3>Tambah Data</h3>
         <form method="POST" enctype="multipart/form-data">
@@ -125,6 +164,7 @@ if (isset($_GET['delete_id'])) {
             <button type="submit" name="add">Submit</button>
         </form>
     </div>
+    <!-- form edit data -->
     <div>
         <h3>Edit Data</h3>
         <form method="POST" enctype="multipart/form-data">
@@ -142,6 +182,7 @@ if (isset($_GET['delete_id'])) {
         </form>
     </div>
 
+    <!-- daftar produk -->
     <div>
         <h3>Daftar Produk</h3>
         <table>
@@ -156,18 +197,52 @@ if (isset($_GET['delete_id'])) {
 
             <?php foreach ($products as $product): ?>
                 <tr>
-                    <td><?= htmlspecialchars($product->getId()); ?></td>
-                    <td><?= htmlspecialchars($product->getName()); ?></td>
-                    <td><?= htmlspecialchars($product->getCategory()); ?></td>
-                    <td><?= htmlspecialchars($product->getPrice()); ?></td>
+                    <td><?= $product->getId(); ?></td>
+                    <td><?= $product->getName(); ?></td>
+                    <td><?= $product->getCategory(); ?></td>
+                    <td><?= $product->getPrice(); ?></td>
                     <td>
-                        <img src="images/<?= htmlspecialchars($product->getImage()); ?>" alt="<?= htmlspecialchars($product->getName()); ?>">
+                        <img src="images/<?= $product->getImage(); ?>" alt="<?= $product->getName(); ?>">
                     </td>
                     <td>
                         <a href="?delete_id=<?= $product->getId(); ?>" onclick="return confirm('Apakah Anda yakin ingin menghapus produk ini?')">Hapus</a>
                     </td>
                 </tr>
             <?php endforeach; ?>
+        </table>
+    </div>
+
+    <!-- cari produk -->
+    <div class="">
+        <div>
+            <h3>Cari Produk</h3>
+            <form method="POST">
+                <input type="text" name="search_query" placeholder="Cari berdasarkan nama">
+                <button type="submit" name="search">Cari</button>
+            </form>
+        </div>
+        <table>
+            <?php if (empty($searchResults)): ?>
+                <tr>
+                    <td colspan="6">Produk tidak ditemukan</td>
+                </tr>
+            <?php else: ?>
+                <?php foreach ($searchResults as $product): ?>
+                    <tr>
+                        <td><?= htmlspecialchars($product->getId()); ?></td>
+                        <td><?= htmlspecialchars($product->getName()); ?></td>
+                        <td><?= htmlspecialchars($product->getCategory()); ?></td>
+                        <td><?= htmlspecialchars($product->getPrice()); ?></td>
+                        <td>
+                            <img src="images/<?= htmlspecialchars($product->getImage()); ?>" alt="<?= htmlspecialchars($product->getName()); ?>">
+                        </td>
+                        <td>
+                            <a href="?delete_id=<?= $product->getId(); ?>" onclick="return confirm('Apakah Anda yakin ingin menghapus produk ini?')">Hapus</a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+
         </table>
     </div>
 </body>

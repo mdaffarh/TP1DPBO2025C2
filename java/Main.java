@@ -137,7 +137,7 @@ class Main {
                     System.out.println("Hapus Produk Petshop Dudul Miaw-miaw");
 
                     // input data
-                    System.out.print("Masukan ID yang ingin diubah: ");
+                    System.out.print("Masukan ID yang ingin dihapus: ");
                     int id = scanner.nextInt();
 
                     // cari produk
